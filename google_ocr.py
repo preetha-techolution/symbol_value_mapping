@@ -109,7 +109,7 @@ def cloud_vision_inference(image_path):
     return alphanumeric_results
 
 # Example usage
-image_path = r"angle_corrected_images\bff38844614611efa9d542010a800003.png.png"  # Update with the actual path to your image
+image_path = r"cropped_images\lot_obb.jpg"  # Update with the actual path to your image
 ocr_results = cloud_vision_inference(image_path)
 print(ocr_results)
 

@@ -46,7 +46,7 @@ def get_obb_results(image_path: str):
                             "rotation": rotation.item()
                         }
                     })
-
+    print(obb_results)
     return obb_results
 
 # Example usage

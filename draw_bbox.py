@@ -45,17 +45,17 @@ def plot_bboxes_on_image(image_path, bbox_list):
 
     # Iterate over the bounding boxes and draw them
     for bbox_data in bbox_list:
-        class_label = bbox_data['class']
-        confidence = bbox_data['confidence']
-        color = colors.get(class_label, (0, 255, 255))  # Default to yellow if class not found
+        if 'class' in bbox_data:  # It's a YOLO bounding box with OBB
+            class_label = bbox_data['class']
+            confidence = bbox_data['confidence']
+            color = colors.get(class_label, (0, 255, 255))  # Default to yellow if class not found
 
-        # Draw YOLO OBB bounding box
-        draw_bounding_box(image, bbox_data, color, f"{class_label.upper()} ({confidence:.2f})")
+            # Draw YOLO OBB bounding box
+            draw_bounding_box(image, bbox_data, color, f"{class_label.upper()} ({confidence:.2f})")
 
-        # Draw the OCR bounding box if available
-        if 'ocr_bbox' in bbox_data:
-            ocr_label = bbox_data.get('ocr_text', 'OCR')
-            draw_ocr_bounding_box(image, bbox_data['ocr_bbox'], (0, 255, 255), ocr_label)  # Yellow for OCR box
+        if 'text' in bbox_data:  # It's an OCR bounding box
+            ocr_label = bbox_data.get('text', 'OCR')
+            draw_ocr_bounding_box(image, bbox_data['bbox'], (0, 255, 255), ocr_label)  # Yellow for OCR box
 
     # Save the annotated image to a file
     output_path = "annotated_image_with_ocr.png"
@@ -63,11 +63,15 @@ def plot_bboxes_on_image(image_path, bbox_list):
     print(f"Annotated image saved to {output_path}")
 
 # Define the path to your image
-image_path = "angle_corrected_images/0261acba66b511efa6fc42010a800003.png"  # Replace with your actual image path
+image_path = "test_sample/572cfab2691f11efb47542010a800003.png"  # Replace with your actual image path
 
-# Updated list of bounding boxes with OCR data
+# Updated list of bounding boxes with OBB and OCR data
 bbox_list = [
-    {'class': 'expiry', 'confidence': 0.8396497368812561, 'obb': {'x_center': 791.1099853515625, 'y_center': 1781.5975341796875, 'width': 27.235260009765625, 'height': 21.30111312866211, 'rotation': 1.5602869987487793}}
+    # First object (lot)
+    {'class': 'expiry', 'confidence': 0.8913092613220215, 'obb': {'x_center': 928.5609130859375, 'y_center': 969.4102783203125, 'width': 39.262908935546875, 'height': 30.963415145874023, 'rotation': 1.5720528364181519}},
+    
+    # Second object (OCR text)
+    {'text': '338949592027-04-24', 'bbox': {'vertices': [{'x': 1240, 'y': 909}, {'x': 1383, 'y': 909}, {'x': 1383, 'y': 981}, {'x': 1240, 'y': 981}]}, 'confidence': 0.9845772981643677, 'alphanumeric': True}
 ]
 
 # Call the function to draw bounding boxes on the image

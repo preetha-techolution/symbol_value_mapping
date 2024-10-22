@@ -204,21 +204,20 @@ def is_to_the_right(yolo_bbox, ocr_bbox_center):
     # OCR bounding box should be to the right and within the vertical bounds of the YOLO bounding box
     return ocr_bbox_center[0] > x_center_yolo and (y_center_yolo - yolo_height / 2) <= ocr_bbox_center[1] <= (y_center_yolo + yolo_height / 2)
 
-
 def find_closest_alphanumeric(obb_results, ocr_results):
     """
-    Find the closest alphanumeric bounding boxes for "ref" and "lot" classes.
+    Find the closest alphanumeric bounding boxes for all detections of "ref", "lot", and "expiry" classes.
 
     Parameters:
-        obb_results (list): List of YOLO bounding boxes for "ref" and "lot".
+        obb_results (list): List of YOLO bounding boxes for "ref", "lot", and "expiry".
         ocr_results (list): List of OCR detected bounding boxes.
 
     Returns:
-        dict: Closest alphanumeric pairs for "ref" and "lot".
+        dict: Lists of closest alphanumeric pairs for each class ("ref", "lot", "expiry").
     """
     closest_pairs = {}
 
-    # Extract relevant YOLO bounding boxes for "ref" and "lot"
+    # Extract relevant YOLO bounding boxes for "ref", "lot", and "expiry"
     yolo_ref = [det for det in obb_results if det['class'] == 'ref']
     yolo_lot = [det for det in obb_results if det['class'] == 'lot']
     yolo_expiry = [det for det in obb_results if det['class'] == 'expiry']
@@ -226,7 +225,7 @@ def find_closest_alphanumeric(obb_results, ocr_results):
     # Extract strictly alphanumeric OCR bounding boxes
     ocr_alphanumeric = [det for det in ocr_results if is_alphanumeric(det['text'])]
 
-
+    # Find closest OCR for each "ref" detection
     for ref in yolo_ref:
         ref_center = calculate_center_yolo(ref)
         closest_ocr = None
@@ -236,91 +235,68 @@ def find_closest_alphanumeric(obb_results, ocr_results):
             ocr_center = calculate_center_ocr(ocr['bbox'])
             distance = calculate_distance(ref_center, ocr_center)
 
-            # Check if OCR bounding box is strictly to the right and within vertical bounds of the "ref" symbol
             if is_to_the_right(ref, ocr_center) and distance < min_distance:
                 min_distance = distance
                 closest_ocr = ocr
 
-        # Preprocess the closest OCR text for "ref"
         if closest_ocr:
             closest_ocr['text'] = remove_unwanted_text('ref_no', closest_ocr['text'])
-
         closest_pairs[ref['class']] = {
-            "ref": ref,
-            "closest_alphanumeric": closest_ocr
-        }
+                "ref": ref,
+                "closest_alphanumeric": closest_ocr
+            }
 
-# Repeat similar changes for the "lot" part as well.
-
-
-    # Handle "lot" class with strict and linear conditions
+    # Find closest OCR for each "lot" detection
     for lot in yolo_lot:
         lot_center = calculate_center_yolo(lot)
         closest_ocr = None
         min_distance = float('inf')
 
-        # First, check with the strict condition
         for ocr in ocr_alphanumeric:
             ocr_center = calculate_center_ocr(ocr['bbox'])
             distance = calculate_distance(lot_center, ocr_center)
 
-            # Check if OCR bounding box is strictly to the right and within vertical bounds of the "lot" symbol
             if is_to_the_right(lot, ocr_center) and distance < min_distance:
                 min_distance = distance
                 closest_ocr = ocr
 
-        # If no closest OCR is found with the strict condition, try with a linear check
-        if closest_ocr is None or len(closest_ocr['text']) < 5:
-            for ocr in ocr_alphanumeric:
-                ocr_center = calculate_center_ocr(ocr['bbox'])
-                distance = calculate_distance(lot_center, ocr_center)
-
-                # Check if OCR bounding box is to the right and check the distance
-                if ocr_center[0] >= lot_center[0] and distance < min_distance:
-                    min_distance = distance
-                    closest_ocr = ocr
-
-        # Preprocess the closest OCR text for "lot"
         if closest_ocr:
             closest_ocr['text'] = remove_unwanted_text('lot_no', closest_ocr['text'])
-
         closest_pairs[lot['class']] = {
-            "lot": lot,
-            "closest_alphanumeric": closest_ocr
-        }
+                "lot": lot,
+                "closest_alphanumeric": closest_ocr
+            }
 
-        # Process for "expiry" class
+    # Find closest OCR for each "expiry" detection
     for expiry in yolo_expiry:
         expiry_center = calculate_center_yolo(expiry)
         closest_ocr = None
         min_distance = float('inf')
 
         for ocr in ocr_results:
-                # Process OCR text for expiry before checking the date pattern
-                processed_text = remove_unwanted_text('expiry', ocr['text'])
-                
-                if is_valid_date(processed_text):  # Check the processed text for valid date
-                    ocr_center = calculate_center_ocr(ocr['bbox'])
-                    distance = calculate_distance(expiry_center, ocr_center)
+            processed_text = remove_unwanted_text('expiry', ocr['text'])
 
-                    if ocr_center[0] >= expiry_center[0] and distance < min_distance:
-                        min_distance = distance
-                        closest_ocr = ocr
+            if is_valid_date(processed_text):
+                ocr_center = calculate_center_ocr(ocr['bbox'])
+                distance = calculate_distance(expiry_center, ocr_center)
+
+                if ocr_center[0] >= expiry_center[0] and distance < min_distance:
+                    min_distance = distance
+                    closest_ocr = ocr
 
         if closest_ocr:
             closest_ocr['text'] = remove_unwanted_text('expiry', closest_ocr['text'])
-
         closest_pairs[expiry['class']] = {
-                "expiry": expiry,
-                "closest_alphanumeric": closest_ocr
-            }
+                    "expiry": expiry,
+                    "closest_alphanumeric": closest_ocr
+                }
 
     return closest_pairs
 
 # Find the closest alphanumeric bounding boxes
 # Find the closest alphanumeric bounding boxes
-obb_results = get_obb_results("angle_corrected_images/0261acba66b511efa6fc42010a800003.png")
-ocr_results = cloud_vision_inference("angle_corrected_images/bff38844614611efa9d542010a800003.png.png")
+obb_results = get_obb_results("test16.png")
+ocr_results = cloud_vision_inference("angle_corrected_images/89019e7a6ac411ef822c42010a800003.jpg")
 closest_pairs = find_closest_alphanumeric(obb_results, ocr_results)
 
 # Output the results for both "ref" and "lot"

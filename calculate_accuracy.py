@@ -67,7 +67,7 @@ def print_accuracy_report(metrics):
 if __name__ == "__main__":
     # Replace these paths with your actual file paths
     ground_truth_file = "ocr_results.csv"
-    predictions_file = "ocr_predictions.csv"
+    predictions_file = "ocr_pred.csv"
     
     metrics = calculate_accuracy(ground_truth_file, predictions_file)
     print_accuracy_report(metrics)

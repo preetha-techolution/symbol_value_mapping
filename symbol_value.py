@@ -217,6 +217,33 @@ def extract_number(text, keyword):
     # Return the original text if no number is found
     return text
 
+def extract_date(text):
+    # Define the regex pattern to match yyyy-mm-dd format with two digits for month and day
+    pattern = r'(\d{4}-\d{2}-\d{2})'
+    
+    # Search for the date pattern in the text
+    match = re.search(pattern, text)
+    
+    # If a match is found, return the matched date, otherwise return None
+    if match:
+        return match.group(1)
+    return ""
+
+def remove_text_after_keyword(text, keyword):
+    """
+    Remove the keyword and any text that follows it.
+
+    Parameters:
+        text (str): The original text.
+        keyword (str): The keyword to remove from the text.
+
+    Returns:
+        str: The text without the keyword and any characters after it.
+    """
+    keyword_pos = text.lower().find(keyword.lower())
+    if keyword_pos != -1:
+        return text[:keyword_pos].strip()
+    return text
 
 def remove_unwanted_text(type, result):
     result = re.sub(r'\[lt\]', '', result, flags=re.IGNORECASE)
@@ -228,6 +255,7 @@ def remove_unwanted_text(type, result):
         result = result.replace(':', '')
         result = result.replace('.', '')
         result = result.replace('number', '')
+        result = result.replace('mber', '')
         result = result.replace('catalogue', '')
         result = result.replace('"DORIOPIORQUE"', '')
         result = result.replace('"', '')
@@ -301,6 +329,8 @@ def remove_unwanted_text(type, result):
         result = result.replace('date', '')
         result = result.replace('exp.date','')
         result = result.replace('expdate','')
+        result = result.replace('expdate:','')
+        result = result.replace(':','')
         result = result.upper()
 
     return result
@@ -338,6 +368,8 @@ def find_closest_alphanumeric(obb_results, ocr_results):
         dict: Closest alphanumeric pairs for "ref" and "lot".
     """
     closest_pairs = {}
+    ref_closest_ocr = []
+    lot_closest_ocr = []
     global ref_processed, lot_processed, expiry_processed
     # Extract relevant YOLO bounding boxes for "ref" and "lot"
     yolo_ref = [det for det in obb_results if det['class'] == 'ref']
@@ -347,8 +379,10 @@ def find_closest_alphanumeric(obb_results, ocr_results):
     # Extract strictly alphanumeric OCR bounding boxes
     ocr_alphanumeric = [det for det in ocr_results if is_alphanumeric(det['text'])]
 
+    #print("yolo ref===================",yolo_ref)
     if not ref_processed:
         ref_processed = True
+        print("inside ref")
         for ref in yolo_ref:
             ref_center = calculate_center_yolo(ref)
             closest_ocr = None
@@ -357,21 +391,49 @@ def find_closest_alphanumeric(obb_results, ocr_results):
             for ocr in ocr_alphanumeric:
                 ocr_center = calculate_center_ocr(ocr['bbox'])
                 distance = calculate_distance(ref_center, ocr_center)
+                #print("dist===================", distance)
 
                 # Check if OCR bounding box is strictly to the right and within vertical bounds of the "ref" symbol
+                print(is_to_the_right(ref, ocr_center))
                 if is_to_the_right(ref, ocr_center) and distance < min_distance:
                     min_distance = distance
                     closest_ocr = ocr
+                    #print("ref================================", closest_ocr)
 
             # Preprocess the closest OCR text for "ref"
             if closest_ocr:
                 closest_ocr['text'] = remove_unwanted_text('ref_no', closest_ocr['text'])
-                closest_ocr['text'] = get_nearest_ref_number(closest_ocr['text'])
+                #closest_ocr['text'] = get_nearest_ref_number(closest_ocr['text'])
+                #print("is this date ?========================", closest_ocr['text'])
+                if is_valid_date(closest_ocr['text']):
+                    print(is_valid_date(closest_ocr['text']))
+                    pass
+                else:   
+                    closest_ocr['text'] = remove_text_after_keyword(closest_ocr['text'], "lot") 
+                    ref_closest_ocr.append(closest_ocr)
 
-            closest_pairs[ref['class']] = {
-                "ref": ref,
-                "closest_alphanumeric": closest_ocr
-            }
+
+         # Find the closest OCR with the highest confidence
+        if ref_closest_ocr:
+            print(ref_closest_ocr)
+            for ref_ocr in ref_closest_ocr:
+                if ref['class'] in closest_pairs and closest_pairs[ref['class']]['closest_alphanumeric'] is not None:
+                    if ref_ocr is not None:
+                            temp =  closest_pairs[ref['class']]['closest_alphanumeric'] 
+                            #print("closest pairs=====================",closest_pairs)
+                            conf =  temp['confidence']
+                            #print("confidence================", conf)
+                            if temp is None:
+                                closest_pairs[ref['class']] = {
+                                "ref": ref,
+                                "closest_alphanumeric": ref_ocr
+                                } 
+                else:
+                    closest_pairs[ref['class']] = {
+                    "ref": ref,
+                    "closest_alphanumeric": ref_ocr
+                    }
+
 
 # Repeat similar changes for the "lot" part as well.
 
@@ -388,37 +450,70 @@ def find_closest_alphanumeric(obb_results, ocr_results):
             for ocr in ocr_alphanumeric:
                 ocr_center = calculate_center_ocr(ocr['bbox'])
                 distance = calculate_distance(lot_center, ocr_center)
-
+                #print("distance", distance)
+                #print("lot=======",lot)
+                #print("ocr_center==============,",ocr_center)
                 # Check if OCR bounding box is strictly to the right and within vertical bounds of the "lot" symbol
                 if is_to_the_right(lot, ocr_center) and distance < min_distance:
                     min_distance = distance
                     closest_ocr = ocr
+                    #print("closest ocr", closest_ocr)
 
             # If no closest OCR is found with the strict condition, try with a linear check
-            if closest_ocr is None or len(closest_ocr['text']) < 5:
-                for ocr in ocr_alphanumeric:
-                    ocr_center = calculate_center_ocr(ocr['bbox'])
-                    distance = calculate_distance(lot_center, ocr_center)
+                # if closest_ocr is None or len(closest_ocr['text']) < 5:
+                #     for ocr in ocr_alphanumeric:
+                #         ocr_center = calculate_center_ocr(ocr['bbox'])
+                #         distance = calculate_distance(lot_center, ocr_center)
 
-                    # Check if OCR bounding box is to the right and check the distance
-                    if ocr_center[0] >= lot_center[0] and distance < min_distance:
-                        min_distance = distance
-                        closest_ocr = ocr
+                #         # Check if OCR bounding box is to the right and check the distance
+                #         if ocr_center[0] >= lot_center[0] and distance < min_distance:
+                #             min_distance = distance
+                #             closest_ocr = ocr
 
             # Preprocess the closest OCR text for "lot"
             if closest_ocr:
                 closest_ocr['text'] = remove_unwanted_text('lot_no', closest_ocr['text'])
-
-            closest_pairs[lot['class']] = {
-                "lot": lot,
-                "closest_alphanumeric": closest_ocr
-            }
+                #print("why date?",closest_ocr['text'])
+                
+                date_value = extract_date(closest_ocr['text'])
+                #print("extracted date:", date_value)
+                #print(is_valid_date(date_value))
+                #print("is it bool?",type(is_valid_date(date_value)))
+                if is_valid_date(date_value):
+                    print("valid date==========")
+                    
+                else:   
+                    #closest_ocr['text'] = remove_text_after_keyword(closest_ocr['text'], "ref") 
+                    lot_closest_ocr.append(closest_ocr)
+        #print("lot closest ocr ==================", lot_closest_ocr)
+        #input("enter")
+        if lot_closest_ocr:
             
+            for lot_ocr in lot_closest_ocr:
+                if lot['class'] in closest_pairs and closest_pairs[lot['class']]['closest_alphanumeric'] is not None:
+                    if lot_ocr is not None:
+                            temp =  closest_pairs[lot['class']]['closest_alphanumeric'] 
+                            print("closest pairs=====================",closest_pairs)
+                            conf =  temp['confidence']
+                            print("confidence================", conf)
+                            if temp is None:
+                                closest_pairs[lot['class']] = {
+                                "lot": lot,
+                                "closest_alphanumeric": lot_ocr
+                                } 
+                else:
+                    closest_pairs[lot['class']] = {
+                    "lot": lot,
+                    "closest_alphanumeric": lot_ocr
+                    }
+
     
         # Process for "expiry" class
     if not expiry_processed:
         expiry_processed = True
+        print("yolo_expiry=========", yolo_expiry)
         for expiry in yolo_expiry:
+            print("each expiry", expiry)
             expiry_center = calculate_center_yolo(expiry)
             closest_ocr = None
             min_distance = float('inf')
@@ -426,23 +521,48 @@ def find_closest_alphanumeric(obb_results, ocr_results):
             for ocr in ocr_results:
                     # Process OCR text for expiry before checking the date pattern
                     processed_text = remove_unwanted_text('expiry', ocr['text'])
+                    processed_text = extract_date(ocr['text'])
+                    #print("processed date==========", processed_text)
                     
                     if is_valid_date(processed_text):  # Check the processed text for valid date
                         ocr_center = calculate_center_ocr(ocr['bbox'])
                         distance = calculate_distance(expiry_center, ocr_center)
-
-                        if ocr_center[0] >= expiry_center[0] and distance < min_distance:
+                        if is_to_the_right(expiry, ocr_center) and distance < min_distance:
                             min_distance = distance
                             closest_ocr = ocr
+                            print("right ocr", closest_ocr)
+                        if closest_ocr is None :
+                            for ocr in ocr_alphanumeric:
+                                ocr_center = calculate_center_ocr(ocr['bbox'])
+                                distance = calculate_distance(expiry_center, ocr_center)
+                                # Check if OCR bounding box is to the right and check the distance
+                                if ocr_center[0] >= expiry_center[0] and distance < min_distance:
+                                    min_distance = distance
+                                    closest_ocr = ocr
+                                    print("closest ocr ", closest_ocr)
 
-            if closest_ocr:
-                closest_ocr['text'] = remove_unwanted_text('expiry', closest_ocr['text'])
+                    if closest_ocr:
+                        closest_ocr['text'] = extract_date(closest_ocr['text'])
 
-            closest_pairs[expiry['class']] = {
-                    "expiry": expiry,
-                    "closest_alphanumeric": closest_ocr
-                }
-
+                    if expiry['class'] in closest_pairs and closest_pairs[expiry['class']]['closest_alphanumeric'] is not None:
+                        if closest_ocr is not None:
+                            temp =  closest_pairs[expiry['class']]['closest_alphanumeric'] 
+                            #print("closest pairs=====================",closest_pairs)
+                            conf =  temp['confidence']
+                            #print("confidence================", conf)
+                            #print("temp===========", temp)
+                            if temp is None or conf < closest_ocr['confidence']:
+                                closest_pairs[expiry['class']] = {
+                                "expiry": expiry,
+                                "closest_alphanumeric": closest_ocr
+                                } 
+                    else:
+                        #print("i am in else")
+                        closest_pairs[expiry['class']] = {
+                        "expiry": expiry,
+                        "closest_alphanumeric": closest_ocr
+                        }
+    print("==================================================================================================================================",closest_pairs)
     return closest_pairs
 
 map_keys = {
@@ -454,6 +574,7 @@ map_keys = {
 def process_images_in_directory(folder_path = None):
     global obb_inside_ocr ,ref_processed ,lot_processed ,expiry_processed
     table_list = []
+    print("folder path: ", folder_path)
     for dirpath, dirnames, filenames in os.walk(folder_path): 
         print(filenames)
         for file in filenames:
@@ -463,12 +584,13 @@ def process_images_in_directory(folder_path = None):
             image = cv2.imread(file)
             obb_results = get_obb_results(file)
             ocr_results = cloud_vision_inference(file)
-            print("obb results: ", obb_results)
-            print("ocr results: ", ocr_results)
+            print("obb results========= ", obb_results)
+            print("ocr results=========== ", ocr_results)
+            
             obb_check_results = check_yolo_with_ocr(obb_results, ocr_results)
             print("obb check results: ", obb_check_results)
             if obb_check_results is None:
-                print("inside===============obb_check_results")
+                
                 print("class key: ", class_key)
                 closest_pairs = find_closest_alphanumeric(obb_results, ocr_results)
                 #print("=========================find closest alphanumeric",closest_pairs)
@@ -530,7 +652,8 @@ def process_images_in_directory(folder_path = None):
                                                 ocr_result = cloud_vision_inference(save_path)
                                                 for result in ocr_result:
                                                     result['text'] = remove_unwanted_text('ref_no', result['text'])
-                                                    result['text'] = get_nearest_ref_number(result['text'])
+                                                    result['text'] = remove_text_after_keyword(result['text'], "lot")
+                                                    #result['text'] = get_nearest_ref_number(result['text'])
                                                     #print("====================bbox failure", result)
                                                     row_dict[map_keys[obb['class']]] = result['text']
                                                     print(f"OCR result for {obb['class']}: {result['text']}")
@@ -558,6 +681,7 @@ def process_images_in_directory(folder_path = None):
                                                 ocr_result = cloud_vision_inference(save_path)
                                                 for result in ocr_result:
                                                     result['text'] = remove_unwanted_text('lot_no', result['text'])
+                                                    result['text'] = remove_text_after_keyword(result['text'], "ref")
                                                     #print("====================bbox failure", result)
                                                     row_dict[map_keys[obb['class']]] = result['text']
                                                     print(f"OCR result for {obb['class']}: {result['text']}")
@@ -598,11 +722,11 @@ def process_images_in_directory(folder_path = None):
             print(row_dict)
             table_list.append(row_dict)
         result_df = pd.DataFrame(table_list)
-        result_df.to_csv('ocr_pred.csv', index=False)
+        result_df.to_csv('ocr_prediction.csv', index=False)
 
     
     print("final resultz: ", table_list)
-process_images_in_directory("angle_corrected_images")
+process_images_in_directory("test_sample")
 
 # Load the image where the OBBs are located
 # Replace 'image_path.jpg' with the actual path to your image
